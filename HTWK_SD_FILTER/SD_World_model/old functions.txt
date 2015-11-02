@@ -1,0 +1,178 @@
+/**
+	Alter Pfadplanungsalgorithmus
+**/
+int cWorld_model::checkLineX(int x, int y, int direction) {
+	int x_pos = 0;
+	while (x_pos < line_detection_radius) {
+		if (my_world.at<cv::Vec3b>(cv::Point(x + x_pos, y)).val[0] > line_detection_border 
+			|| my_world.at<cv::Vec3b>(cv::Point(x + x_pos + 1, y)).val[0] > line_detection_border 
+			|| my_world.at<cv::Vec3b>(cv::Point(x + x_pos - 1, y)).val[0] > line_detection_border) {
+			if (my_world.at<cv::Vec3b>(cv::Point(x + x_pos + 1, y)).val[0] > my_world.at<cv::Vec3b>(cv::Point(x + x_pos, y)).val[0]) {
+				x_pos++; 
+			} else if (my_world.at<cv::Vec3b>(cv::Point(x + x_pos - 1, y)).val[0] > my_world.at<cv::Vec3b>(cv::Point(x + x_pos, y)).val[0]) {
+				x_pos--;
+			}
+			//LOG_INFO(cString::Format("Found a line at x_pos = %d, y = %d", x+x_pos, y));
+			break;
+		}
+		x_pos ++;
+	}
+	return x_pos;
+}
+
+int cWorld_model::checkLineY(int x, int y, int direction) {
+	int y_pos = 0;
+	while (y_pos < line_detection_radius) {
+		if (my_world.at<cv::Vec3b>(cv::Point(x, y + y_pos)).val[0] > line_detection_border 
+			|| my_world.at<cv::Vec3b>(cv::Point(x, y + y_pos + 1)).val[0] > line_detection_border
+			|| my_world.at<cv::Vec3b>(cv::Point(x, y + y_pos - 1)).val[0] > line_detection_border) {
+			if (my_world.at<cv::Vec3b>(cv::Point(x, y + y_pos + 1)).val[0] > my_world.at<cv::Vec3b>(cv::Point(x, y + y_pos)).val[0]) {
+				y_pos++; 
+			} else if (my_world.at<cv::Vec3b>(cv::Point(x, y + y_pos - 1)).val[0] > my_world.at<cv::Vec3b>(cv::Point(x, y + y_pos)).val[0]) {
+				y_pos--;
+			}
+			//LOG_INFO(cString::Format("Found a line at x = %d, y_pos = %d", x, y+y_pos));
+			break;
+		}
+		y_pos ++;
+	}
+	return y_pos;
+}
+
+cv::Point cWorld_model::checkWalkX(int x, int y, int direction, int half_lane_width) {
+	int step = 1;
+	while (step < line_detection_stepsize) {
+		if (my_world.at<cv::Vec3b>(cv::Point(x, y + (step*direction))).val[0] > line_detection_border 
+			|| my_world.at<cv::Vec3b>(cv::Point(x + 1, y + (step*direction))).val[0] > line_detection_border 
+			|| my_world.at<cv::Vec3b>(cv::Point(x - 1, y + (step*direction))).val[0] > line_detection_border) {
+			if (my_world.at<cv::Vec3b>(cv::Point(x + 1, y + (step*direction))).val[0] > my_world.at<cv::Vec3b>(cv::Point(x, y + (step*direction))).val[0]) {
+				x++;
+			} else if (my_world.at<cv::Vec3b>(cv::Point(x - 1, y + (step*direction))).val[0] > my_world.at<cv::Vec3b>(cv::Point(x, y + (step*direction))).val[0]) {
+				x--;
+			}
+		} else {
+			//LOG_INFO(cString::Format("break walkx with %d steps", step));
+			break;
+		}
+		step ++;
+	}
+	x = x + (half_lane_width * direction);
+	return cv::Point(x, y + (step*direction));
+}
+
+cv::Point cWorld_model::checkWalkY(int x, int y, int direction, int half_lane_width) {
+	int step = 1;
+	while (step < line_detection_stepsize) {
+		if (my_world.at<cv::Vec3b>(cv::Point(x + (step*direction), y)).val[0] > line_detection_border
+			|| my_world.at<cv::Vec3b>(cv::Point(x + 1 + (step*direction), y + 1)).val[0] > line_detection_border
+			|| my_world.at<cv::Vec3b>(cv::Point(x + 1 + (step*direction), y + 1)).val[0] > line_detection_border) {
+			if (my_world.at<cv::Vec3b>(cv::Point(x + 1 + (step*direction), y + 1)).val[0] > my_world.at<cv::Vec3b>(cv::Point(x + (step*direction), y)).val[0]) {
+				y++;
+			} else if (my_world.at<cv::Vec3b>(cv::Point(x + (step*direction), y - 1)).val[0] > my_world.at<cv::Vec3b>(cv::Point(x + (step*direction), y)).val[0]) {
+				y--;
+			}
+		} else {
+			//LOG_INFO(cString::Format("break walky with %d steps", step));
+			break;
+		}
+		step ++;
+	}
+	y = y + (half_lane_width * direction);
+	return cv::Point(x + (step*direction), y);
+}
+
+float cWorld_model::angleBetween(const cv::Point &v1, const cv::Point &v2) {
+    float len1 = sqrt((float)(v1.x * v1.x + v1.y * v1.y));
+    float len2 = sqrt((float)(v2.x * v2.x + v2.y * v2.y));
+
+    float dot = (float)(v1.x * v2.x + v1.y * v2.y);
+
+    float a = dot / (len1 * len2);
+
+    if (a >= 1.0)
+        return 0.0;
+    else if (a <= -1.0)
+		return (float)M_PI;
+    else
+        return acos(a); // 0..PI
+}
+
+void cWorld_model::doPathPlaning(tUInt32 timestamp) {
+	pathPoints.clear();
+	int x = (int)my_pos->getx();
+	int y = (int)my_pos->gety();
+	float rot = my_pos->getRotation();
+	int step_length = 10;
+	int route = 0;
+	//look for a line on the right
+	while (route < line_detection_max_route) {
+		int x_pos = 0;
+		int y_pos = 0;
+		if (rot >= 315 || rot < 45) {
+			//north on global map
+			x_pos = checkLineX(x, y, 1);
+			cv::Point np = checkWalkX(x + x_pos, y, -1, (line_detection_lane_width/2));
+			if (np.x != x || np.y != y) {
+				int npnx_pos = checkLineX(np.x, np.y, 1);
+				cv::Point npn = checkWalkX(np.x + npnx_pos, np.y, -1, (line_detection_lane_width/2));
+				rot = atan2((float)(npn.y - y), (float)(npn.x - x)) * (float)180.0 / (float)CV_PI;
+
+				x = np.x;
+				y = np.y;
+
+				pathPoints.push_back(np);
+				
+				rot = 90 + rot;
+
+				//LOG_INFO(cString::Format("rotate by %f", rot));
+
+				//np.x = (x + x_pos) + (cos(rot) * ((x + x_pos) - np.x)) - (sin(rot) * ((y + y_pos) - np.y));
+				//np.y = (y + y_pos) + (sin(rot) * ((x + x_pos) - np.x)) + (cos(rot) * ((y + y_pos) - np.y));
+				//pathPoints.push_back(np);
+			} else {
+				break;
+			}
+		} else if (rot >= 45 && rot < 135) {
+			//east on global map
+			y_pos = checkLineY(x, y, 1);
+			cv::Point np = checkWalkY(x, y - y_pos, 1, (line_detection_lane_width/2));
+			if (np.x != x || np.y != y) {
+				int npny_pos = checkLineY(np.x, np.y, 1);
+				cv::Point npn = checkWalkY(np.x, np.y - npny_pos, 1, (line_detection_lane_width/2));
+				rot = atan2((float)(npn.y - y), (float)(npn.x - x)) * (float)180.0 / (float)CV_PI;
+				x = np.x;
+				y = np.y;
+				rot = 180-rot;
+				LOG_INFO(cString::Format("rotate by %f", rot));
+				pathPoints.push_back(np);
+			} else {
+				break;
+			}
+		} else if (rot >= 135 && rot < 225) {
+			//south on global map
+			/*x_pos = checkLineX(x, y, -1);
+			cv::Point np = checkWalkX(x - x_pos, y, -1, (line_detection_lane_width/2));
+			if (np.x != x || np.y != y) {
+				x = np.x;
+				y = np.y;
+				pathPoints.push_back(np);
+			} else {
+				break;
+			}*/
+			break;
+		} else if (rot >= 225 && rot < 315) {
+			//west on global map
+			/*y_pos = checkLineY(x, y, -1);
+			cv::Point np = checkWalkY(x, y - y_pos, 1, (line_detection_lane_width/2));
+			if (np.x != x || np.y != y) {
+				x = np.x;
+				y = np.y;
+				pathPoints.push_back(np);
+			} else {
+				break;
+			}*/
+			break;
+		}
+		route++;
+	}
+}

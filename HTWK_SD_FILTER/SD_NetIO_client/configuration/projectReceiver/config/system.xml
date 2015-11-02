@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="iso-8859-1" standalone="no"?>
+<adtf:project xmlns:adtf="adtf">
+	<general_settings>
+		<property name="active_configuration" value="Recording" />
+	</general_settings>
+	<configurations>
+		<configuration description="" name="Live">
+			<graph />
+		</configuration>
+		<configuration description="" name="Playback">
+			<graph />
+		</configuration>
+		<configuration description="" name="Recording">
+			<graph>
+				<filter alias="Demo_UDP_Filter" idref="adtf.example.demo_udp" priority="1" />
+				<filter alias="Demo_Media_Description_Display" idref="adtf.example.demo_media_description_display" priority="2" />
+				<connection connection_priority="50" dest="Demo_Media_Description_Display.output" source="Demo_UDP_Filter.output" />
+			</graph>
+		</configuration>
+	</configurations>
+	<fileinfo adtfversion="2.10.0beta" configversion="1.3" />
+	<configuration_settings />
+</adtf:project>

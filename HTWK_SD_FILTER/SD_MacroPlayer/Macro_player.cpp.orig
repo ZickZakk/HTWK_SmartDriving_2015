@@ -1,0 +1,534 @@
+/**
+ * @filename
+ * @copyright (c) Copyright 2014 SD-Team HTWK
+ * @author epeterse
+ * @details
+ */
+
+#include "stdafx.h"
+#include "Macro_player.h"
+
+#include <iostream>
+#include <fstream>
+
+/// Create filter
+ADTF_FILTER_PLUGIN(FILTER_NAME, OID_ADTF_SD_Macro_Player, cMacro_player);
+
+
+cMacro_player::cMacro_player(const tChar* __info) : adtf::cFilter(__info)
+{
+	this->m_nLastMSTime = 0;
+	this->isDriveActive = false;
+	this->distance = 0;
+	this->lastDist = 0;
+	this->step = 0;
+	this->isFirstCarComplete = false;
+	this->isFirstCarFound = false;
+	this->isMaybeGapEnd = false;
+	this->isGapEnd = false;
+
+	initProperties();
+}
+
+cMacro_player::~cMacro_player()
+{
+}
+
+tVoid cMacro_player::initProperties()
+{
+	SetPropertyInt(PROP_NAME_DISTANCE, 200);	
+    SetPropertyBool(PROP_NAME_DISTANCE NSSUBPROP_ISCHANGEABLE, tTrue); 
+
+	SetPropertyInt(PROP_NAME_MEASURE_DISTANCE, 51);
+	SetPropertyBool(PROP_NAME_MEASURE_DISTANCE NSSUBPROP_ISCHANGEABLE, tTrue); 
+
+	// Schwellwerte IR-Shortrange
+	thresholdIRShortRange = 8;
+	SetPropertyInt(PROP_NAME_IR_SHORT_RANGE_THRESHOLD, thresholdIRShortRange);
+	SetPropertyBool(PROP_NAME_IR_SHORT_RANGE_THRESHOLD NSSUBPROP_ISCHANGEABLE, tTrue);
+
+	confidenceRange = 30;
+	SetPropertyInt(PROP_NAME_CONFIDENCERANGE, confidenceRange);
+	SetPropertyBool(PROP_NAME_CONFIDENCERANGE NSSUBPROP_ISCHANGEABLE, tTrue);
+	
+}
+
+tResult cMacro_player::Init(tInitStage eStage, __exception)
+{
+    RETURN_IF_FAILED(cFilter::Init(eStage, __exception_ptr));
+
+    if (eStage == StageFirst)
+    {
+		// Input Pins
+		cObjectPtr<IMediaDescriptionManager> pDescManager;
+
+		RETURN_IF_FAILED(_runtime->GetObject(OID_ADTF_MEDIA_DESCRIPTION_MANAGER, IID_ADTF_MEDIA_DESCRIPTION_MANAGER, (tVoid**)&pDescManager,__exception_ptr));
+		
+		tChar const *strDescSignalValue = pDescManager->GetMediaDescription("tSignalValue");
+        RETURN_IF_POINTER_NULL(strDescSignalValue);        
+
+		cObjectPtr<IMediaType> pTypeSignal = new cMediaType(0, 0, 0, "tSignalValue", strDescSignalValue, IMediaDescription::MDF_DDL_DEFAULT_VERSION);	
+		RETURN_IF_FAILED(pTypeSignal->GetInterface(IID_ADTF_MEDIA_TYPE_DESCRIPTION, (tVoid**)&m_pCoderDescSignalInput));
+		
+		// create input pins
+		RETURN_IF_FAILED(createInputPin(this->m_pin_input_wheelRotation, "WheelRotation_in", pTypeSignal));
+		RETURN_IF_FAILED(createInputPin(this->m_ir_RR, "IR_RR", pTypeSignal));
+		// Output Pins
+		tChar const *strDescSignalValueOutput = pDescManager->GetMediaDescription("tSignalValue");
+        RETURN_IF_POINTER_NULL(strDescSignalValueOutput);        
+
+		cObjectPtr<IMediaType> pTypeSignalOutput = new cMediaType(0, 0, 0, "tSignalValue", strDescSignalValueOutput, IMediaDescription::MDF_DDL_DEFAULT_VERSION);	
+		RETURN_IF_FAILED(pTypeSignal->GetInterface(IID_ADTF_MEDIA_TYPE_DESCRIPTION, (tVoid**)&m_pCoderDescSignalOutput));
+
+		 // create and register the output pin
+		RETURN_IF_FAILED(createOutputPin(this->m_pin_output_acceleration, "Acceleration_out", pTypeSignalOutput));
+		RETURN_IF_FAILED(createOutputPin(this->m_pin_output_steeringAngle, "SteeringAngle_out", pTypeSignalOutput));
+
+		/*cObjectPtr<IMediaDescriptionManager> pDescManager;
+		cObjectPtr<IMediaType> pTypeStruct;
+		RETURN_IF_FAILED(_runtime->GetObject(OID_ADTF_MEDIA_DESCRIPTION_MANAGER,IID_ADTF_MEDIA_DESCRIPTION_MANAGER,(tVoid**)&pDescManager,__exception_ptr));
+		tChar const * strDescSignalValue = pDescManager->GetMediaDescription("tSignalValue");
+		RETURN_IF_POINTER_NULL(strDescSignalValue);
+
+		// Media type definition
+        cObjectPtr<IMediaType> pTypeSignal = new cMediaType(0, 0, 0, "tSignalValue", strDescSignalValue,IMediaDescription::MDF_DDL_DEFAULT_VERSION);
+		RETURN_IF_FAILED(AllocMediaType((tVoid**)&pTypeStruct, MEDIA_TYPE_STRUCTURED_DATA, MEDIA_SUBTYPE_STRUCT_STRUCTURED, NULL, NULL));
+
+        // Create the output pins
+        //RETURN_IF_FAILED(m_oOAcceleration.Create("acceleration_out", pTypeSignal, NULL));
+        //RETURN_IF_FAILED(RegisterPin(&m_oOAcceleration));
+
+		// Media type definition
+        //cObjectPtr<IMediaType> pTypeIn = new cMediaType(0, 0, 0, "tSignalValue", strDescSignalValue,IMediaDescription::MDF_DDL_DEFAULT_VERSION);
+		RETURN_IF_FAILED(pTypeSignal->GetInterface(IID_ADTF_MEDIA_TYPE_DESCRIPTION, (tVoid**)&m_pCoderDescSignalInput));
+
+		//Create the input pins		
+		RETURN_IF_FAILED(m_oIWheelL.Create("wheel_left", pTypeSignal, static_cast<IPinEventSink*> (this)));
+		RETURN_IF_FAILED(RegisterPin(&m_oIWheelL));
+
+		RETURN_IF_FAILED(m_oIWheelR.Create("wheel_right", pTypeSignal, static_cast<IPinEventSink*> (this)));
+		RETURN_IF_FAILED(RegisterPin(&m_oIWheelR));
+
+		
+		RETURN_IF_FAILED(m_oIServo.Create("servo", pTypeSignal, static_cast<IPinEventSink*> (this)));
+		RETURN_IF_FAILED(RegisterPin(&m_oIServo));*/
+    }
+    else if (eStage == StageNormal)
+    {
+		/*startclick = 5.0;
+		currentclick = 0.0;
+		untilclick = 0.0;
+		currentclick_glob = 0.0;
+		playFromFile("C:\\examplelist.txt");*/
+    }
+    else if (eStage == StageGraphReady)
+    {
+    }
+
+    RETURN_NOERROR;
+}
+
+tResult cMacro_player::createInputPin(cInputPin &pin, const char *pinName, cObjectPtr<IMediaType> typeSignal)
+{
+	RETURN_IF_FAILED(pin.Create(pinName, typeSignal, static_cast<IPinEventSink*> (this)));
+	RETURN_IF_FAILED(RegisterPin(&pin));
+
+	RETURN_NOERROR;
+}
+tResult cMacro_player::createOutputPin(cOutputPin &pin, const char *pinName, cObjectPtr<IMediaType> typeSignal)
+{
+	RETURN_IF_FAILED(pin.Create(pinName, typeSignal, static_cast<IPinEventSink*> (this)));
+	RETURN_IF_FAILED(RegisterPin(&pin));
+
+	RETURN_NOERROR;
+}
+
+tResult cMacro_player::Start(__exception) {
+	RETURN_IF_FAILED(cFilter::Start( __exception_ptr));
+	m_nLastMSTime = 0;
+
+	RETURN_NOERROR;
+}
+
+tResult cMacro_player::Stop(__exception) {
+	RETURN_IF_FAILED(cFilter::Stop( __exception_ptr));
+
+	RETURN_NOERROR;
+}
+
+tResult cMacro_player::Shutdown(tInitStage eStage, __exception) {
+	RETURN_IF_FAILED(cFilter::Shutdown(eStage, __exception_ptr));
+
+    if (eStage == StageFirst)
+    {
+    }
+    else if (eStage == StageNormal)
+    {
+    }
+    else if (eStage == StageGraphReady)
+    {
+    }
+
+	RETURN_NOERROR;
+}
+
+tResult cMacro_player::sendNewValue(cOutputPin * outpin, tFloat32 value, tTimeStamp timeStamp) 
+{
+	tFloat32 flValue= value;
+							
+    //create new media sample
+    cObjectPtr<IMediaSample> pMediaSample;
+    RETURN_IF_FAILED(AllocMediaSample((tVoid**)&pMediaSample));
+
+    //allocate memory with the size given by the descriptor
+    cObjectPtr<IMediaSerializer> pSerializer;
+    m_pCoderDescSignalInput->GetMediaSampleSerializer(&pSerializer);
+    tInt nSize = pSerializer->GetDeserializedSize();
+    pMediaSample->AllocBuffer(nSize);
+       
+    //write date to the media sample with the coder of the descriptor
+    cObjectPtr<IMediaCoder> pCoder;
+    RETURN_IF_FAILED(m_pCoderDescSignalInput->WriteLock(pMediaSample, &pCoder));	
+		
+	pCoder->Set("f32Value", (tVoid*)&flValue);	
+    pCoder->Set("ui32ArduinoTimestamp", (tVoid*)&timeStamp);    
+    m_pCoderDescSignalInput->Unlock(pCoder);
+    
+    //transmit media sample over output pin
+    pMediaSample->SetTime(timeStamp);
+    outpin->Transmit(pMediaSample);
+
+	RETURN_NOERROR;
+}
+
+void cMacro_player::playFromFile(std::string source) {
+	/*string line;
+	std::ifstream myfile (source);
+	if (myfile.is_open())
+	{
+		drivelist.clear();
+		while (getline (myfile, line))
+		{
+			drivelist.push_back(line);
+			LOG_INFO(cString::Format("Readline : %s", line));
+		}
+		myfile.close();
+	}*/
+}
+
+void cMacro_player::nextStep() {
+	/*if (currentclick_glob < startclick) {
+		return;
+	}
+	if (drivelist.size() > 0) {
+		string curdrive = drivelist.at(0);
+		vector<string> splitted = split(curdrive, ' ');
+		untilclick = atof(splitted.at(0).c_str());
+		tFloat32 servo = atof(splitted.at(1).c_str());
+		servo = atof(splitted.at(1).c_str());
+		for_or_backward = atof(splitted.at(2).c_str());
+
+
+
+	}*/
+}
+
+tResult cMacro_player::OnPinEvent( IPin *pSource, tInt nEventCode, tInt nParam1, tInt nParam2, IMediaSample *pMediaSample) {
+	RETURN_IF_POINTER_NULL(pMediaSample);
+	RETURN_IF_POINTER_NULL(pSource);
+	
+	if (nEventCode == IPinEventSink::PE_MediaSampleReceived)
+	{
+			tFloat32 signalValue = 0;
+			tUInt32 timeStamp = 0;
+			m_nLastMSTime = _clock->GetStreamTime();
+
+			if (pMediaSample != NULL && m_pCoderDescSignalInput != NULL) {
+				// read-out the incoming Media Sample
+				cObjectPtr<IMediaCoder> pCoderInput;
+				RETURN_IF_FAILED(m_pCoderDescSignalInput->Lock(pMediaSample, &pCoderInput));
+            
+				//get values from media sample        
+				pCoderInput->Get("f32Value", (tVoid*)&signalValue);
+				pCoderInput->Get("ui32ArduinoTimestamp", (tVoid*)&timeStamp);
+				m_pCoderDescSignalInput->Unlock(pCoderInput);                 
+			}
+			else 
+			{
+				RETURN_ERROR(ERR_FAILED);
+			}
+
+		if (pSource == &m_pin_input_wheelRotation)
+		{
+			tInt rotation = tInt(signalValue);
+			this->distance = getDistanceFromWheelRotation(rotation);
+
+			//LOG_INFO(cString::Format("Distance: %d cm :: %d rpm", distance, rotation));
+			//LOG_INFO(cString::Format("PropertyValue: %d", GetPropertyInt(PROP_NAME_DISTANCE)));
+			
+			if (this->distance >= GetPropertyInt(PROP_NAME_DISTANCE))
+			{
+				stopDrive(pMediaSample);
+			}
+			else if (this->distance >= 4 && !this->isDriveActive) 
+			{
+				this->isDriveActive = true;
+				//steer(pMediaSample, 30);
+				steer(pMediaSample, 0);
+				tResult result = drive(pMediaSample);// ,30.0f);
+
+				LOG_INFO("drive is Active!");
+				LOG_INFO(cString::Format("return code: %d", result));
+				
+			}
+		}
+
+		if (pSource == &m_ir_RR)
+		{
+			tInt distanceToObject = tInt(signalValue);
+			if (step == 0)
+			{
+				//nichts gefunden
+				if ( distanceToObject > this->confidenceRange)
+				{
+					//do Nothing
+				}
+				//auf Höhe des Autos
+				if (distanceToObject < this->confidenceRange && !this->isFirstCarFound)
+				{
+					this->isFirstCarFound = true;
+					this->isFirstCarComplete = false;
+				}
+				//Auto abgeschlossen nun kommt die Lücke
+				if (distanceToObject > this->confidenceRange && this->isFirstCarFound && !this->isFirstCarComplete)
+				{
+					this->isFirstCarComplete = true;
+					//this->isFirstCarFound = false;
+					this->gapStart = this->distance;
+					LOG_INFO("GapStart");
+					LOG_INFO(cString::Format("---11---  %d", this->distance));
+				}
+				//fahren in der Lücke zuende
+
+				if (this->isFirstCarComplete)
+				{	//Lückenende ?
+					//Ausreißer?
+					// 3. Test
+					LOG_INFO(cString::Format("--------  %d", this->isFirstCarComplete));
+					LOG_INFO(cString::Format("---22---  %d", this->distance));
+					if(this->isMaybeGapEnd)
+					{
+						if (distanceToObject <= confidenceRange )
+						{
+							LOG_INFO("Third");
+							this->isGapEnd = true;
+						}
+						this->lastDist = 0;
+						this->isMaybeGapEnd = false;
+					}
+					// 2. Test
+					if( this->lastDist != 0){
+						if (distanceToObject <= confidenceRange )
+						{
+							LOG_INFO("Second");
+							this->isMaybeGapEnd = true;
+						} else {
+							this->lastDist = 0;
+						}
+					}
+					//1. test
+					if( distanceToObject <= confidenceRange && lastDist == 0 && !this->isGapEnd)
+					{
+						LOG_INFO("first");
+						this->lastDist = distanceToObject;
+						this->gapEnd = this->distance;
+					}
+					else
+					{
+						this->lastDist = 0;
+					}
+				}//end if (this->isFirstCarComplete)
+			
+				//Lücke wirklich zu ende
+				if(distanceToObject <= confidenceRange && isGapEnd)
+				{
+					tInt measureParkSpace = this->gapEnd- this->gapStart;
+					LOG_INFO(cString::Format("<---IST---> %d", measureParkSpace));
+					LOG_INFO(cString::Format("<---SOLL--->  %d", GetPropertyInt(PROP_NAME_MEASURE_DISTANCE)));
+
+					if(measureParkSpace >= GetPropertyInt(PROP_NAME_MEASURE_DISTANCE))
+					{
+						LOG_INFO(cString::Format("great  %d", measureParkSpace));
+						stopDrive(pMediaSample);
+						this->isFirstCarComplete = false;
+						this->isGapEnd = false;
+						step = 1;
+						LOG_INFO("STEP 0->1");
+						LOG_INFO(" ");
+					}	
+					else
+					{
+						LOG_INFO("To Close");
+						this->isFirstCarComplete = false;
+						this->isGapEnd = false;
+					}
+				}//end if (distanceToObject <= confidenceRange && isGapEnd)
+			}//step == 0
+		} // end gap measure
+
+		//Macro 
+		if (step == 1)
+		{
+			//drive back to Gap
+			this->backmove = this->distance - this->gapEnd;
+			this->lastDist = this->distance;
+			//tResult res = drive(pMediaSample, -40);
+			//LOG_INFO(cString::Format("return code: %d", res));
+			drive(pMediaSample, -22);
+			LOG_INFO(cString::Format("dist  %d, gap %d", this->distance , gapEnd));
+			step = 2;
+			LOG_INFO("STEP 1->2");
+			LOG_INFO(" ");
+		}
+
+		if (step == 2)
+		{
+			LOG_INFO(cString::Format("dist:  %d, back: %d, last: %d", this->distance , this->backmove, this->lastDist));
+
+			//stop if gap reached
+			//if (this->distance - this->backmove*2 >= this->lastDist)
+			if (this->distance - (this->backmove -5) >= this->lastDist)
+			{
+				stopDrive(pMediaSample);
+
+				LOG_INFO("STOP, reached gap");
+				step = 3;
+				this->lastDist = 0;
+				LOG_INFO("STEP 2->3");
+				LOG_INFO(" ");
+			}
+		}
+
+		if(step == 3)
+		{
+			steer(pMediaSample, -20);
+			drive(pMediaSample, 30);
+
+			step = 4;
+			LOG_INFO("STEP 3->4");
+			LOG_INFO(" ");
+		}
+
+		if(step == 4)
+		{
+			LOG_INFO(cString::Format("distance: %d, gapEnd: %d, backmove %d", this->distance, gapEnd, this->backmove*2+100));
+			//steer(pMediaSample, -20);
+			//drive(pMediaSample, 30);
+			
+			if (this->distance >= gapEnd + this->backmove*2)
+			{
+				stopDrive(pMediaSample);
+				
+				step = 50; //42;
+				//steer(pMediaSample, 22);
+				//drive(pMediaSample, -22);
+				LOG_INFO("STEP 4->5");
+				
+			}
+		this->lastDist = this->distance;
+		}//end if step==4
+
+		
+		if(step==42)
+		{	
+			tInt rueckwaertsEinparkDistanz = 92;
+
+			LOG_INFO(cString::Format("dist:  %d, back: %d, last: %d", this->distance , this->backmove, this->lastDist));
+			drive(pMediaSample, -22);
+			steer(pMediaSample, 22);
+
+			if(this->distance - rueckwaertsEinparkDistanz >= this->lastDist)
+			{
+				stopDrive(pMediaSample);
+				LOG_INFO("STOP!!");
+				step = 23;
+			}
+		}//end if step==5
+
+	} //if (nEventCode == IPinEventSink::PE_MediaSampleReceived)
+	RETURN_NOERROR;
+}
+
+tResult cMacro_player::stopDrive(IMediaSample *pMediaSample)
+{
+	RETURN_IF_FAILED(sendNewValue(&m_pin_output_acceleration, 0.0f, pMediaSample->GetTime()));
+	RETURN_IF_FAILED(sendNewValue(&m_pin_output_steeringAngle, 0.0f, pMediaSample->GetTime()));
+	LOG_INFO("stop drive");
+	RETURN_NOERROR;
+}
+
+tResult cMacro_player::PropertyChanged(const char *propertyName)
+{
+	RETURN_NOERROR;
+}
+
+tInt cMacro_player::getDistanceFromWheelRotation(tInt &rotation)
+{
+	const static tInt CM_PER_ROTATION = 4;
+	
+	return rotation * CM_PER_ROTATION;
+}
+
+tResult cMacro_player::drive(IMediaSample *pMediaSample)
+{
+	RETURN_IF_FAILED(sendNewValue(&m_pin_output_acceleration, 30.0f, pMediaSample->GetTime()));
+
+	RETURN_NOERROR;
+}
+
+tResult cMacro_player::drive(IMediaSample *pMediaSample, const tInt &speed)
+{
+	if (isSpeedValid(speed))
+	{
+		RETURN_IF_FAILED(sendNewValue(&m_pin_output_acceleration, static_cast<tFloat32>(speed), pMediaSample->GetTime()));
+		LOG_INFO(cString::Format("drive speed: %d",speed));
+	}
+	else
+	{
+		LOG_WARNING("The given speed is not valid; use 30 as default");
+		drive(pMediaSample);
+	}
+
+	RETURN_NOERROR;
+}
+
+tBool cMacro_player::isSpeedValid(const tInt &speed) const
+{
+	const static tInt MIN_SPEED = -100;
+	const static tInt MAX_SPEED = 100;
+
+	return speed >= MIN_SPEED && speed <= MAX_SPEED;
+}
+
+tResult cMacro_player::steer(IMediaSample *pMediaSample, const tInt &steerAngle)
+{
+	if (isSteerAngleValid(steerAngle))
+	{
+		RETURN_IF_FAILED(sendNewValue(&m_pin_output_steeringAngle, static_cast<tFloat32>(steerAngle), pMediaSample->GetTime()));
+		LOG_INFO(cString::Format("steering angle: %d", steerAngle));
+	}
+	else
+	{
+		LOG_WARNING("The steer angle is not valid; do nothing instead!");
+	}
+
+	RETURN_NOERROR;
+}
+
+tBool cMacro_player::isSteerAngleValid(const tInt &steerAngle) const
+{
+	const static tInt MIN_STEER_ANGLE = -30;
+	const static tInt MAX_STEER_ANGLE = 30;
+
+	return steerAngle >= MIN_STEER_ANGLE && steerAngle <= MAX_STEER_ANGLE;
+}

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="iso-8859-1" standalone="no"?>
+<adtf:configuration xmlns:adtf="adtf">
+	<ce_layouts>
+		<configuration horizontal_scrollbar_value="1" name="Live" show="true" tab_pos="0" vertical_scrollbar_value="1" zoomfactor="1.000000" />
+		<configuration horizontal_scrollbar_value="1" name="Recording" show="true" tab_pos="2" vertical_scrollbar_value="1" zoomfactor="1.000000">
+			<component height="74" name="Demo_UDP_Filter" width="172" x="470" y="280">
+				<input_pin name="input" />
+				<output_pin name="output" />
+			</component>
+			<component height="74" name="Demo_Media_Description_Display" width="200" x="420" y="131">
+				<input_pin name="NESTED_STRUCT" />
+			</component>
+			<component height="98" name="Harddisk_Player" width="172" x="53" y="124">
+				<output_pin name="NESTED_STRUCT" />
+				<output_pin name="video" />
+				<property name="alias" type="string" value="Harddisk_Player" />
+				<property name="ask_for_references" type="bool" value="false" />
+				<property name="cached_sectors" type="int" value="2048" />
+				<property name="Category" type="int" value="14" />
+				<property name="ClassLabel" type="string" value="Harddisk Player" />
+				<property name="config_information" type="bool" value="true" />
+				<property name="disable_timing_correction" type="bool" value="false" />
+				<property name="embedded_mode" type="bool" value="false" />
+				<property name="emulate_external_clocks" type="bool" value="true" />
+				<property name="enable_loop_mode" type="bool" value="false" />
+				<property name="enable_perf_log" type="bool" value="false" />
+				<property name="filename" timestamp="212241556024000000" type="file" value="..\..\..\..\..\..\..\..\..\__INSTALL\bin\templates\example_test_file.dat" />
+				<property name="Identifier" type="string" value="adtf.stg.harddisk_player" />
+				<property name="idref" type="string" value="adtf.stg.harddisk_player" />
+				<property name="ignore_unkown_classes" type="bool" value="false" />
+				<property name="keep_multiple_files_open" type="bool" value="false" />
+				<property name="load_references" type="bool" value="true" />
+				<property name="NamespaceType" type="string" value="/item/file/filter" />
+				<property name="perf_warning_treshold" type="int" value="500000" />
+				<property name="playback_rate" type="float" value="1" />
+				<property name="priority" type="int" value="1" />
+				<property name="queue_size" type="int" value="0" />
+				<property name="queue_time_span" type="int" value="1000000" />
+				<property name="reset_recording_time_offset" type="bool" value="true" />
+				<property name="send_forward_seek_reset_events" type="bool" value="true" />
+			</component>
+			<connection dest="Demo_UDP_Filter" dest_pin="input" reldiff="0" shape_type="3" source="Harddisk_Player" source_pin="NESTED_STRUCT" x_p2="237" x_p3="237" x_p4="435" x_p5="435" y_p2="0" y_p3="322" y_p4="322" y_p5="0" />
+			<connection dest="Demo_Media_Description_Display" dest_pin="NESTED_STRUCT" reldiff="0" shape_type="3" source="Harddisk_Player" source_pin="NESTED_STRUCT" x_p2="237" x_p3="237" x_p4="385" x_p5="385" y_p2="0" y_p3="173" y_p4="173" y_p5="0" />
+		</configuration>
+	</ce_layouts>
+</adtf:configuration>

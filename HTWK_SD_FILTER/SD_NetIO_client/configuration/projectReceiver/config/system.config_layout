@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="iso-8859-1" standalone="no"?>
+<adtf:configuration xmlns:adtf="adtf">
+	<ce_layouts>
+		<configuration horizontal_scrollbar_value="1" name="Live" show="true" tab_pos="0" vertical_scrollbar_value="1" zoomfactor="1.000000" />
+		<configuration horizontal_scrollbar_value="1" name="Recording" show="true" tab_pos="2" vertical_scrollbar_value="1" zoomfactor="1.000000">
+			<component height="74" name="Demo_Media_Description_Display" width="200" x="486" y="165">
+				<input_pin name="output" />
+			</component>
+			<component height="74" name="Demo_UDP_Filter" width="172" x="140" y="165">
+				<input_pin name="input" />
+				<output_pin name="output" />
+			</component>
+			<connection dest="Demo_Media_Description_Display" dest_pin="output" reldiff="0" shape_type="3" source="Demo_UDP_Filter" source_pin="output" x_p2="324" x_p3="324" x_p4="463" x_p5="463" y_p2="0" y_p3="207" y_p4="207" y_p5="0" />
+		</configuration>
+	</ce_layouts>
+</adtf:configuration>
